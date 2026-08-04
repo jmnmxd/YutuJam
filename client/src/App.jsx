@@ -37,8 +37,6 @@ function App() {
   const [player, setPlayer] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [playlistUrl, setPlaylistUrl] = useState('');
-  const [isImporting, setIsImporting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [notification, setNotification] = useState(null);
@@ -293,47 +291,6 @@ function App() {
     const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
     const match = url.match(regex);
     return match ? match[1] : null;
-  };
-
-  // Importar playlist de YouTube
-  const handleImportPlaylist = async (e) => {
-    e.preventDefault();
-    if (playlistUrl.trim()) {
-      setIsImporting(true);
-      try {
-        const response = await fetch(`https://yutujam.onrender.com/api/playlist?url=${encodeURIComponent(playlistUrl)}`);
-        const data = await response.json();
-        
-        if (data.videos && data.videos.length > 0) {
-          // Agregar todos los videos a la playlist
-          data.videos.forEach(video => {
-            const videoData = {
-              id: video.id,
-              url: `https://www.youtube.com/watch?v=${video.id}`,
-              title: video.title,
-              thumbnail: video.thumbnail,
-              addedBy: username
-            };
-            socket.emit('add-to-playlist', { roomId, video: videoData });
-          });
-          
-          // Si no hay video actual, reproducir el primero
-          if (!currentVideo && data.videos.length > 0) {
-            handlePlayVideo(data.videos[0].id);
-          }
-          
-          setPlaylistUrl('');
-          alert(`Playlist importada: ${data.videos.length} videos agregados`);
-        } else {
-          alert('No se pudo importar la playlist. Verifica la URL e intenta de nuevo.');
-        }
-      } catch (error) {
-        console.error('Error al importar playlist:', error);
-        alert('Error al importar playlist. Intenta de nuevo.');
-      } finally {
-        setIsImporting(false);
-      }
-    }
   };
 
   // Buscar videos en YouTube (abre YouTube directamente)
@@ -597,19 +554,6 @@ function App() {
                 onChange={(e) => setVideoUrl(e.target.value)}
               />
               <button type="submit">Agregar</button>
-            </form>
-            
-            <form className="import-playlist-form" onSubmit={handleImportPlaylist}>
-              <input
-                type="text"
-                placeholder="📋 Importar playlist completa de YouTube"
-                value={playlistUrl}
-                onChange={(e) => setPlaylistUrl(e.target.value)}
-                disabled={isImporting}
-              />
-              <button type="submit" disabled={isImporting}>
-                {isImporting ? 'Importando...' : '📥 Importar Playlist'}
-              </button>
             </form>
             
             <div className="playlist-items">

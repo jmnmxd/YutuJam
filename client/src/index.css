@@ -387,50 +387,6 @@ body {
   background: #ff3333;
 }
 
-.import-playlist-form {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 15px;
-}
-
-.import-playlist-form input {
-  flex: 1;
-  padding: 10px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-}
-
-.import-playlist-form input:focus {
-  outline: none;
-  border-color: #00c853;
-}
-
-.import-playlist-form input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.import-playlist-form button {
-  padding: 10px 20px;
-  background: #00c853;
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.import-playlist-form button:hover:not(:disabled) {
-  background: #00e676;
-}
-
-.import-playlist-form button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .playlist-items {
   display: flex;
   flex-direction: column;

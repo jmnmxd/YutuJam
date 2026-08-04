@@ -7,14 +7,7 @@ const axios = require('axios');
 const { randomUUID } = require('crypto');
 require('dotenv').config();
 
-// Import youtube-search-api (opcional - requiere npm install youtube-search-api)
-let ytplApi;
-try {
-  ytplApi = require('youtube-search-api');
-  console.log('youtube-search-api cargado correctamente');
-} catch (error) {
-  console.log('youtube-search-api no disponible. Las funciones de playlist estarán limitadas.');
-}
+
 
 // Función para sanitizar entrada y prevenir XSS
 const sanitizeInput = (input) => {
@@ -387,103 +380,6 @@ app.get('/api/rooms/:roomId', (req, res) => {
   const { roomId } = req.params;
   const exists = !!rooms[roomId];
   res.json({ exists });
-});
-
-// Ruta para obtener videos de una playlist de YouTube
-app.get('/api/playlist', async (req, res) => {
-  try {
-    const { url } = req.query;
-    
-    if (!url) {
-      return res.status(400).json({ error: 'URL parameter required' });
-    }
-
-    // Extraer ID de playlist de la URL
-    const playlistIdMatch = url.match(/[?&]list=([^&]+)/);
-    if (!playlistIdMatch) {
-      return res.status(400).json({ error: 'Invalid playlist URL' });
-    }
-    
-    const playlistId = playlistIdMatch[1];
-    let videos = [];
-
-    // Intentar usar youtube-search-api si está disponible
-    if (ytplApi) {
-      try {
-        console.log(`Intentando obtener playlist con youtube-search-api: ${playlistId}`);
-        const playlistData = await ytplApi.GetPlaylistData(playlistId, Infinity);
-        
-        videos = playlistData.items.map(item => ({
-          id: item.id,
-          title: item.title,
-          thumbnail: item.thumbnail?.url || `https://img.youtube.com/vi/${item.id}/mqdefault.jpg`,
-          channel: item.channelTitle || 'Unknown',
-          duration: item.lengthSimple || '0:00',
-          addedBy: 'System'
-        }));
-        
-        console.log(`Playlist obtenida con youtube-search-api: ${videos.length} videos`);
-        return res.json({ videos, title: playlistData.meta.title });
-      } catch (apiError) {
-        console.log('Error con youtube-search-api, intentando Invidious:', apiError.message);
-      }
-    }
-
-    // Fallback: Usar Invidious API
-    const invidiousInstances = [
-      'https://vid.puffyan.us',
-      'https://invidious.fdn.fr',
-      'https://invidious.perennialte.ch',
-      'https://invidious.snopyta.org',
-      'https://inv.bp.projectsegfau.lt',
-      'https://invidious.io.lol'
-    ];
-
-    let lastError = null;
-    for (const instance of invidiousInstances) {
-      try {
-        console.log(`Intentando obtener playlist en: ${instance}`);
-        
-        const response = await axios.get(`${instance}/api/v1/playlists/${playlistId}`, {
-          timeout: 10000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
-        });
-
-        if (response.data && response.data.videos) {
-          videos = response.data.videos.map(video => ({
-            id: video.videoId,
-            title: video.title,
-            thumbnail: video.videoThumbnails?.[4]?.url || 
-                      video.videoThumbnails?.[0]?.url || 
-                      `https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`,
-            channel: video.author,
-            duration: video.lengthSeconds,
-            addedBy: 'System'
-          }));
-          
-          console.log(`Playlist obtenida en ${instance}: ${videos.length} videos encontrados`);
-          return res.json({ videos, title: response.data.title });
-        }
-      } catch (error) {
-        console.log(`Error con ${instance}:`, error.message);
-        lastError = error;
-        continue;
-      }
-    }
-
-    // Si todo falla
-    console.log('No se pudo obtener la playlist');
-    res.status(500).json({ 
-      error: 'No se pudo obtener la playlist. Inténtalo de nuevo más tarde.',
-      details: lastError?.message 
-    });
-
-  } catch (error) {
-    console.error('Error al obtener playlist:', error.message);
-    res.status(500).json({ error: 'Error al obtener playlist' });
-  }
 });
 
 // Ruta para buscar videos en YouTube usando Invidious API (gratuito y sin API key)
