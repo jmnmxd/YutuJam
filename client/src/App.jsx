@@ -37,14 +37,9 @@ function App() {
   const [player, setPlayer] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [playlistUrl, setPlaylistUrl] = useState('');
-  const [isImporting, setIsImporting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [notification, setNotification] = useState(null);
-  const [messageStatus, setMessageStatus] = useState({});
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [pendingMessages, setPendingMessages] = useState([]);
 
   const chatEndRef = useRef(null);
 
@@ -74,21 +69,31 @@ function App() {
         method: 'POST'
       });
       const data = await response.json();
-      setRoomId(data.roomId);
-      socket.emit('join-room', { roomId: data.roomId, username });
-      setView('room');
+      if (data.roomId) {
+        setRoomId(data.roomId);
+        socket.emit('join-room', { roomId: data.roomId, username });
+        showNotification('Sala creada exitosamente', 'success');
+      } else {
+        showNotification('Error al crear sala', 'error');
+      }
     } catch (error) {
       console.error('Error al crear sala:', error);
+      showNotification('Error de conexión al crear sala', 'error');
     }
   };
 
   // Unirse a sala
   const handleJoinRoom = () => {
     if (joinRoomId.trim()) {
-      const targetRoomId = joinRoomId.toUpperCase();
-      setRoomId(targetRoomId);
+      const targetRoomId = joinRoomId.toUpperCase().trim();
+      if (targetRoomId.length < 3) {
+        showNotification('El código de sala debe tener al menos 3 caracteres', 'error');
+        return;
+      }
       socket.emit('join-room', { roomId: targetRoomId, username });
       // Solo cambiar de vista si la sala existe (se confirmará con room-state)
+    } else {
+      showNotification('Por favor ingresa un código de sala', 'error');
     }
   };
 
@@ -195,12 +200,6 @@ function App() {
       setMessages(prev => [...prev, messageData]);
     });
 
-    socket.on('message-delivered', ({ messageId }) => {
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId ? { ...msg, status: 'delivered' } : msg
-      ));
-    });
-
     socket.on('play-next-video', ({ videoId }) => {
       handlePlayVideo(videoId);
     });
@@ -224,7 +223,6 @@ function App() {
       socket.off('playlist-updated');
       socket.off('new-message');
       socket.off('play-next-video');
-      socket.off('message-delivered');
       socket.off('error-message');
     };
   }, [player, isSyncing]);
@@ -269,8 +267,8 @@ function App() {
         const currentTime = player.getCurrentTime();
         setCurrentTime(currentTime);
         
-        // Sync every 10 seconds instead of 5 to reduce conflicts
-        if (Math.floor(currentTime) % 10 === 0) {
+        // Sync every 15 seconds to reduce conflicts and improve performance
+        if (Math.floor(currentTime) % 15 === 0) {
           socket.emit('sync-video', {
             roomId,
             videoId: currentVideo,
@@ -315,47 +313,6 @@ function App() {
     return match ? match[1] : null;
   };
 
-  // Importar playlist de YouTube
-  const handleImportPlaylist = async (e) => {
-    e.preventDefault();
-    if (playlistUrl.trim()) {
-      setIsImporting(true);
-      try {
-        const response = await fetch(`https://yutujam.onrender.com/api/playlist?url=${encodeURIComponent(playlistUrl)}`);
-        const data = await response.json();
-        
-        if (data.videos && data.videos.length > 0) {
-          // Agregar todos los videos a la playlist
-          data.videos.forEach(video => {
-            const videoData = {
-              id: video.id,
-              url: `https://www.youtube.com/watch?v=${video.id}`,
-              title: video.title,
-              thumbnail: video.thumbnail,
-              addedBy: username
-            };
-            socket.emit('add-to-playlist', { roomId, video: videoData });
-          });
-          
-          // Si no hay video actual, reproducir el primero
-          if (!currentVideo && data.videos.length > 0) {
-            handlePlayVideo(data.videos[0].id);
-          }
-          
-          setPlaylistUrl('');
-          alert(`Playlist importada: ${data.videos.length} videos agregados`);
-        } else {
-          alert('No se pudo importar la playlist. Verifica la URL e intenta de nuevo.');
-        }
-      } catch (error) {
-        console.error('Error al importar playlist:', error);
-        alert('Error al importar playlist. Intenta de nuevo.');
-      } finally {
-        setIsImporting(false);
-      }
-    }
-  };
-
   // Buscar videos en YouTube (abre YouTube directamente)
   const handleSearch = (e) => {
     e.preventDefault();
@@ -396,54 +353,23 @@ function App() {
   const handleSendMessage = (e) => {
     e.preventDefault();
     
-    // Validaciones adicionales en el cliente
+    // Validaciones básicas
     if (!newMessage.trim()) {
-      showNotification('Error: el mensaje no puede estar vacío', 'error');
+      showNotification('El mensaje no puede estar vacío', 'error');
       return;
     }
     
-    if (newMessage.length > 1000) {
-      showNotification('Error: el mensaje es demasiado largo (máximo 1000 caracteres)', 'error');
+    if (newMessage.length > 500) {
+      showNotification('El mensaje es demasiado largo (máximo 500 caracteres)', 'error');
       return;
     }
     
     if (!roomId) {
-      showNotification('Error: no estás en una sala', 'error');
+      showNotification('No estás en una sala', 'error');
       return;
     }
     
-    // Verificar que no sea un objeto/array intentando ser enviado como string
-    try {
-      const parsed = JSON.parse(newMessage);
-      if (typeof parsed === 'object') {
-        showNotification('Error: no se pueden enviar objetos o archivos', 'error');
-        return;
-      }
-    } catch (e) {
-      // Si no es JSON válido, asumimos que es texto normal - esto es correcto
-    }
-    
-    const messageText = newMessage;
-    
-    console.log('Enviando mensaje:', { roomId, username, message: messageText });
-    
-    // Marcar como enviando (rojo)
-    setIsSendingMessage(true);
-    
-    socket.emit('send-message', { roomId, username, message: messageText }, (ack) => {
-      if (ack && ack.success) {
-        // Marcar como entregado (verde)
-        setIsSendingMessage(false);
-        console.log('Mensaje entregado correctamente');
-        showNotification('Mensaje enviado', 'success');
-      } else {
-        // Marcar como error
-        setIsSendingMessage(false);
-        console.log('Error al entregar mensaje:', ack?.error);
-        showNotification('Error al enviar mensaje: ' + (ack?.error || 'Desconocido'), 'error');
-      }
-    });
-    
+    socket.emit('send-message', { roomId, username, message: newMessage.trim() });
     setNewMessage('');
   };
 
@@ -619,19 +545,6 @@ function App() {
               <button type="submit">Agregar</button>
             </form>
             
-            <form className="import-playlist-form" onSubmit={handleImportPlaylist}>
-              <input
-                type="text"
-                placeholder="📋 Importar playlist completa de YouTube"
-                value={playlistUrl}
-                onChange={(e) => setPlaylistUrl(e.target.value)}
-                disabled={isImporting}
-              />
-              <button type="submit" disabled={isImporting}>
-                {isImporting ? 'Importando...' : '📥 Importar Playlist'}
-              </button>
-            </form>
-            
             <div className="playlist-items">
               {playlist.map((video) => (
                 <div
@@ -688,19 +601,13 @@ function App() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`chat-message ${msg.username === username ? 'own' : ''} ${msg.status || 'delivered'}`}
+                  className={`chat-message ${msg.username === username ? 'own' : ''}`}
                 >
                   <div className="chat-message-header">
-                    <span>{escapeHtml(msg.username)}</span>
-                    <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                    <span className="username">{escapeHtml(msg.username)}</span>
+                    <span className="time">{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                   </div>
                   <div className="chat-message-text">{escapeHtml(msg.message)}</div>
-                  {msg.status === 'pending' && (
-                    <div className="message-status">🔴 Enviando...</div>
-                  )}
-                  {msg.status === 'delivered' && (
-                    <div className="message-status">🟢 Entregado</div>
-                  )}
                 </div>
               ))}
               <div ref={chatEndRef} />
@@ -711,14 +618,9 @@ function App() {
                 placeholder="Escribe un mensaje..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                className={isSendingMessage ? 'sending' : ''}
+                maxLength={500}
               />
-              <button 
-                type="submit"
-                className={isSendingMessage ? 'sending' : ''}
-              >
-                {isSendingMessage ? '🔴 Enviando...' : 'Enviar'}
-              </button>
+              <button type="submit">Enviar</button>
             </form>
           </div>
         </div>

@@ -112,6 +112,13 @@ io.on('connection', (socket) => {
   socket.on('join-room', ({ roomId, username }) => {
     console.log(`Usuario ${username} intentando unirse a sala ${roomId}`);
     
+    // Validar roomId
+    if (!roomId || typeof roomId !== 'string' || roomId.trim().length === 0) {
+      console.log('RoomId inválido rechazado');
+      socket.emit('error-message', { message: 'Código de sala inválido' });
+      return;
+    }
+    
     // Sanitizar username
     const sanitizedUsername = sanitizeInput(username);
     
@@ -125,6 +132,13 @@ io.on('connection', (socket) => {
     if (!rooms[roomId]) {
       console.log(`Sala ${roomId} no existe, rechazando conexión`);
       socket.emit('error-message', { message: 'La sala no existe. Verifica el código o crea una nueva sala.' });
+      return;
+    }
+    
+    // Limitar número de usuarios por sala
+    if (rooms[roomId].users.length >= 50) {
+      console.log(`Sala ${roomId} está llena, rechazando conexión`);
+      socket.emit('error-message', { message: 'La sala está llena. Intenta más tarde o crea una nueva sala.' });
       return;
     }
     
